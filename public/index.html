@@ -111,6 +111,77 @@
         </div>
       </form>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>许可清单</h2>
+        <div class="panel-tip">落在允许清单里的通过，落在不允许清单里的不通过，两边都没写到的按待确认列出；许可写法先归一再比对</div>
+      </div>
+      <div class="policy-lists">
+        <div class="policy-box">
+          <h3>允许使用的许可</h3>
+          <ul class="policy-list" id="allow-list"></ul>
+          <p class="empty-tip hidden" id="allow-empty">允许清单还是空的</p>
+          <form class="policy-form" id="allow-form" autocomplete="off">
+            <label data-field="allowName">许可名称<input id="allow-name" placeholder="例如 MIT" maxlength="40"></label>
+            <button type="submit">加入允许清单</button>
+          </form>
+        </div>
+        <div class="policy-box">
+          <h3>一律不允许的许可</h3>
+          <ul class="policy-list" id="deny-list"></ul>
+          <p class="empty-tip hidden" id="deny-empty">不允许清单还是空的</p>
+          <form class="policy-form" id="deny-form" autocomplete="off">
+            <label data-field="denyName">许可名称<input id="deny-name" placeholder="例如 GPL-3.0" maxlength="40"></label>
+            <button type="submit">加入不允许清单</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="check-area">
+        <div class="check-head">
+          <h3>核查结论</h3>
+          <button type="button" id="check-refresh" class="ghost">重新核查</button>
+        </div>
+
+        <h4 class="sub-head">按项目汇总</h4>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>项目</th>
+                <th>通过</th>
+                <th>不通过</th>
+                <th>待确认</th>
+                <th>合计</th>
+              </tr>
+            </thead>
+            <tbody id="check-summary-body"></tbody>
+          </table>
+        </div>
+
+        <h4 class="sub-head">统一处理意见</h4>
+        <div class="check-groups" id="check-groups"></div>
+        <p class="empty-tip hidden" id="check-groups-empty">还没有登记带许可的依赖</p>
+
+        <h4 class="sub-head">逐条结论</h4>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>项目</th>
+                <th>依赖名称</th>
+                <th>许可（登记写法）</th>
+                <th>统一按</th>
+                <th>结论</th>
+              </tr>
+            </thead>
+            <tbody id="check-rows-body"></tbody>
+          </table>
+        </div>
+        <p class="empty-tip hidden" id="check-rows-empty">还没有依赖登记，核查无从谈起</p>
+      </div>
+    </section>
   </main>
 
   <script src="app.js"></script>

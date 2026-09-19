@@ -6,7 +6,21 @@ const state = {
   licenses: [],
   statuses: [],
   editingId: '',
+  policy: { allow: [], deny: [] },
+  check: { projects: [], rows: [], groups: [] },
 };
+
+// 核查结论的三种结果：落在允许清单里通过、落在不允许清单里不通过、其余一律待确认
+const VERDICTS = {
+  pass: { label: '通过', cls: 'pass' },
+  fail: { label: '不通过', cls: 'fail' },
+  pending: { label: '待确认', cls: 'pending' },
+};
+
+function verdictTag(verdict) {
+  const meta = VERDICTS[verdict] || VERDICTS.pending;
+  return `<span class="tag ${meta.cls}">${meta.label}</span>`;
+}
 
 const el = (id) => document.getElementById(id);
 
@@ -180,6 +194,103 @@ function projectName(projectId) {
   return found ? found.name : projectId;
 }
 
+async function loadPolicy() {
+  const payload = await request('/api/license-policy');
+  state.policy = payload.policy || { allow: [], deny: [] };
+  renderPolicy();
+}
+
+async function loadCheck() {
+  const payload = await request('/api/license-check');
+  state.check = {
+    projects: payload.projects || [],
+    rows: payload.rows || [],
+    groups: payload.groups || [],
+  };
+  renderCheck();
+}
+
+function renderPolicyList(listKey) {
+  const list = state.policy[listKey] || [];
+  const ul = el(`${listKey}-list`);
+  ul.innerHTML = list.map((item) => {
+    const canonical = item.canonical && item.canonical !== item.name
+      ? `<span class="canon">统一按 ${escapeHtml(item.canonical)} 对待</span>`
+      : '';
+    return `<li>
+      <span class="mono">${escapeHtml(item.name)}</span>
+      ${canonical}
+      <button type="button" class="link danger" data-policy-remove="${listKey}:${escapeHtml(item.id)}">移除</button>
+    </li>`;
+  }).join('');
+  el(`${listKey}-empty`).classList.toggle('hidden', list.length > 0);
+}
+
+function renderPolicy() {
+  renderPolicyList('allow');
+  renderPolicyList('deny');
+}
+
+function renderCheckSummary() {
+  el('check-summary-body').innerHTML = state.check.projects.map((item) => `<tr>
+      <td>${escapeHtml(item.projectName)}</td>
+      <td><span class="tag pass">${item.pass}</span></td>
+      <td><span class="tag fail">${item.fail}</span></td>
+      <td><span class="tag pending">${item.pending}</span></td>
+      <td>${item.pass + item.fail + item.pending} 条</td>
+    </tr>`).join('');
+}
+
+// 统一处理意见：归一后是同一种许可的登记归成一组，写清哪些写法、哪些登记按同一种许可对待；
+// 没填许可的登记单独列出，一律按待确认处理，不能算作通过
+function renderCheckGroups() {
+  const parts = state.check.groups.map((group) => {
+    const spellings = group.spellings.map((item) => `<span class="mono">${escapeHtml(item)}</span>`).join('、');
+    const refs = group.refs.map((ref) => `${escapeHtml(ref.depName)}（${escapeHtml(ref.projectName)}）`).join('、');
+    const merged = group.spellings.length > 1 ? '多种写法已归一，' : '';
+    return `<div class="check-group">
+      <div class="check-group-head">
+        <span class="mono strong">${escapeHtml(group.canonical)}</span>
+        ${verdictTag(group.verdict)}
+        <span class="check-group-note">${merged}${group.refs.length} 条登记按同一种许可对待</span>
+      </div>
+      <div class="check-group-line">登记写法：${spellings}</div>
+      <div class="check-group-line">涉及登记：${refs}</div>
+    </div>`;
+  });
+  const unfilled = state.check.rows.filter((row) => !row.canonical);
+  if (unfilled.length) {
+    const refs = unfilled.map((row) => `${escapeHtml(row.name)}（${escapeHtml(row.projectName)}）`).join('、');
+    parts.push(`<div class="check-group">
+      <div class="check-group-head">
+        <span class="strong">未填许可</span>
+        ${verdictTag('pending')}
+        <span class="check-group-note">${unfilled.length} 条登记没填许可，一律按待确认处理，不能算作通过</span>
+      </div>
+      <div class="check-group-line">涉及登记：${refs}</div>
+    </div>`);
+  }
+  el('check-groups').innerHTML = parts.join('');
+  el('check-groups-empty').classList.toggle('hidden', parts.length > 0);
+}
+
+function renderCheckRows() {
+  el('check-rows-body').innerHTML = state.check.rows.map((row) => `<tr>
+      <td>${escapeHtml(row.projectName)}</td>
+      <td class="mono">${escapeHtml(row.name)}</td>
+      <td>${row.license ? escapeHtml(row.license) : '<span class="missing">未填</span>'}</td>
+      <td class="mono">${row.canonical ? escapeHtml(row.canonical) : '<span class="missing">—</span>'}</td>
+      <td>${verdictTag(row.verdict)}</td>
+    </tr>`).join('');
+  el('check-rows-empty').classList.toggle('hidden', state.check.rows.length > 0);
+}
+
+function renderCheck() {
+  renderCheckSummary();
+  renderCheckGroups();
+  renderCheckRows();
+}
+
 function renderDeps() {
   const body = el('dep-body');
   body.innerHTML = state.deps.map((item) => {
@@ -241,6 +352,7 @@ async function submitProject(event) {
     notify('项目已新增', 'ok');
     await loadProjects();
     await loadDeps();
+    await loadCheck();
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -272,6 +384,24 @@ async function submitDep(event) {
     closeDepForm();
     await loadProjects();
     await loadDeps();
+    await loadCheck();
+  } catch (err) {
+    notify(err.message, 'error');
+    markField(err.field);
+  }
+}
+
+async function submitPolicy(listKey, event) {
+  event.preventDefault();
+  clearNotice();
+  clearFieldMarks();
+  const input = el(`${listKey}-name`);
+  try {
+    await request('/api/license-policy', { method: 'POST', body: JSON.stringify({ list: listKey, name: input.value }) });
+    input.value = '';
+    notify(listKey === 'allow' ? '已加入允许清单' : '已加入不允许清单', 'ok');
+    await loadPolicy();
+    await loadCheck();
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -282,6 +412,24 @@ async function submitDep(event) {
 document.addEventListener('click', async (event) => {
   const node = event.target.closest('button');
   if (!node) return;
+
+  if (node.dataset.policyRemove) {
+    clearNotice();
+    const [listKey, entryId] = node.dataset.policyRemove.split(':');
+    const found = (state.policy[listKey] || []).find((item) => item.id === entryId);
+    if (!found) return;
+    const label = listKey === 'allow' ? '允许清单' : '不允许清单';
+    if (!window.confirm(`确定把 ${found.name} 从${label}里移除吗？`)) return;
+    try {
+      await request(`/api/license-policy/${encodeURIComponent(listKey)}/${encodeURIComponent(entryId)}`, { method: 'DELETE' });
+      notify('许可已从清单里移除', 'ok');
+      await loadPolicy();
+      await loadCheck();
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+    return;
+  }
 
   const projectId = node.dataset.projectRename || node.dataset.projectOwner || node.dataset.projectDelete;
   if (projectId) {
@@ -306,6 +454,7 @@ document.addEventListener('click', async (event) => {
       }
       await loadProjects();
       await loadDeps();
+      await loadCheck();
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -329,6 +478,7 @@ document.addEventListener('click', async (event) => {
       notify('登记已删除', 'ok');
       await loadProjects();
       await loadDeps();
+      await loadCheck();
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -361,6 +511,16 @@ el('dep-refresh').addEventListener('click', () => {
   clearNotice();
   loadProjects()
     .then(loadDeps)
+    .then(loadPolicy)
+    .then(loadCheck)
+    .catch((err) => notify(err.message, 'error'));
+});
+el('allow-form').addEventListener('submit', (event) => submitPolicy('allow', event));
+el('deny-form').addEventListener('submit', (event) => submitPolicy('deny', event));
+el('check-refresh').addEventListener('click', () => {
+  clearNotice();
+  loadPolicy()
+    .then(loadCheck)
     .catch((err) => notify(err.message, 'error'));
 });
 el('filter-project').addEventListener('change', () => {
@@ -376,9 +536,13 @@ el('operator').addEventListener('change', () => {
   window.localStorage.setItem(OPERATOR_KEY, currentOperator());
 });
 
-// 页面打开时先把项目与依赖登记拉一遍，项目决定登记表单里能选哪些归属
+// 页面打开时先把项目、依赖登记与许可清单各拉一遍，项目决定登记表单里能选哪些归属，
+// 核查结论随许可清单一起出来
 restoreOperator();
 loadHealth();
 loadProjects()
   .then(loadDeps)
+  .catch((err) => notify(err.message, 'error'));
+loadPolicy()
+  .then(loadCheck)
   .catch((err) => notify(err.message, 'error'));

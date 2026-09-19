@@ -84,6 +84,31 @@ app.delete('/api/deps/:id', (req, res) => {
   }
 });
 
+// 许可清单：允许与不允许两类，核查结论按当前清单与登记实时算出来
+app.get('/api/license-policy', (_req, res) => {
+  res.json({ policy: api.getPolicy() });
+});
+
+app.post('/api/license-policy', (req, res) => {
+  try {
+    res.status(201).json(api.addPolicyEntry(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.delete('/api/license-policy/:list/:id', (req, res) => {
+  try {
+    res.json(api.removePolicyEntry(req.params.list, req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.get('/api/license-check', (_req, res) => {
+  res.json(api.checkLicenses());
+});
+
 // 未匹配到的接口路径统一返回说明，避免前端拿到一串页面内容
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: { code: 'API_NOT_FOUND', message: '接口不存在', field: '' } });
