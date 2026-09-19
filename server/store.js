@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { canonicalKey } = require('./license-names');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'db.json');
@@ -43,6 +44,17 @@ function seedData() {
       { id: 'dep-2017', projectId: 'proj-1003', name: 'vite', version: '5.0.10', license: 'MIT', owner: '王凯', status: '在用', note: '本地构建', createdAt: '2026-08-28T04:12:00.000Z', updatedAt: '2026-09-08T07:42:00.000Z' },
       { id: 'dep-2018', projectId: 'proj-1003', name: 'xml-parser', version: '0.9.2', license: 'GPL-3.0', owner: '', status: '在用', note: '解析对账文件用，许可需要复核', createdAt: '2026-09-01T02:00:00.000Z', updatedAt: '2026-09-08T07:50:00.000Z' },
     ],
+    // 许可清单的初始内容：允许一类、一律不允许一类，核查时逐条对着两个清单判
+    licensePolicy: {
+      allow: [
+        { id: 'lic-3001', name: 'MIT', createdAt: '2026-09-01T02:00:00.000Z' },
+        { id: 'lic-3002', name: 'Apache-2.0', createdAt: '2026-09-01T02:05:00.000Z' },
+        { id: 'lic-3003', name: 'BSD-2-Clause', createdAt: '2026-09-01T02:10:00.000Z' },
+      ],
+      deny: [
+        { id: 'lic-3004', name: 'GPL-3.0', createdAt: '2026-09-01T02:15:00.000Z' },
+      ],
+    },
   };
 }
 
@@ -78,6 +90,40 @@ function normalizeDep(item, fallbackIndex) {
   };
 }
 
+// 把单条清单条目整理成固定结构
+function normalizePolicyEntry(item, listName, fallbackIndex) {
+  const source = item && typeof item === 'object' ? item : {};
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : `lic-restored-${listName}-${fallbackIndex + 1}`,
+    name: typeof source.name === 'string' ? source.name.trim() : '',
+    createdAt: typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : new Date().toISOString(),
+  };
+}
+
+// 整份许可清单：清单内按归一化后的许可去重；同一个许可两边都有时以不允许清单为准，
+// 允许清单里的那条丢掉，宁可判严也不能悄悄放过
+function normalizePolicy(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const seed = seedData().licensePolicy;
+  const readList = (listName) => {
+    const list = Array.isArray(source[listName]) ? source[listName] : seed[listName];
+    const seen = new Set();
+    return list
+      .map((item, index) => normalizePolicyEntry(item, listName, index))
+      .filter((item) => item.name)
+      .filter((item) => {
+        const key = canonicalKey(item.name);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+  const deny = readList('deny');
+  const denyKeys = new Set(deny.map((item) => canonicalKey(item.name)));
+  const allow = readList('allow').filter((item) => !denyKeys.has(canonicalKey(item.name)));
+  return { allow, deny };
+}
+
 // 整份数据保证 projects 与 deps 结构一致，指向不存在项目的登记一律丢掉
 function normalize(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -106,7 +152,7 @@ function normalize(raw) {
         .filter((item) => known.has(item.projectId))
     : [];
 
-  return { projects: dedupedProjects, deps };
+  return { projects: dedupedProjects, deps, licensePolicy: normalizePolicy(source.licensePolicy) };
 }
 
 // 读取数据文件：文件缺失或内容损坏时回落到初始数据并立刻补写

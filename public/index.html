@@ -111,6 +111,92 @@
         </div>
       </form>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>许可清单与核查</h2>
+        <div class="panel-tip">落在允许清单里的通过、落在不允许清单里的不通过、两边都没写到的按待确认列出，待确认不算通过</div>
+        <button type="button" id="license-refresh" class="ghost">重新核查</button>
+      </div>
+
+      <div class="policy-columns">
+        <div class="policy-box">
+          <h3>允许使用的许可 <span class="policy-count" id="allow-count">0 条</span></h3>
+          <ul class="policy-list" id="allow-list"></ul>
+          <p class="empty-tip hidden" id="allow-empty">允许清单还是空的</p>
+          <form class="policy-form" id="allow-form" autocomplete="off">
+            <label class="policy-field" data-field="allowName">许可名称
+              <input id="allow-name" placeholder="例如 MIT" maxlength="40">
+            </label>
+            <button type="submit">加入允许清单</button>
+          </form>
+        </div>
+        <div class="policy-box">
+          <h3>一律不允许的许可 <span class="policy-count" id="deny-count">0 条</span></h3>
+          <ul class="policy-list" id="deny-list"></ul>
+          <p class="empty-tip hidden" id="deny-empty">不允许清单还是空的</p>
+          <form class="policy-form" id="deny-form" autocomplete="off">
+            <label class="policy-field" data-field="denyName">许可名称
+              <input id="deny-name" placeholder="例如 GPL-3.0" maxlength="40">
+            </label>
+            <button type="submit">加入不允许清单</button>
+          </form>
+        </div>
+      </div>
+
+      <h3 class="subhead">按项目汇总</h3>
+      <p class="panel-tip">每个项目的通过、不通过、待确认三栏加起来就是这个项目的登记条数</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>通过</th>
+              <th>不通过</th>
+              <th>待确认</th>
+              <th>登记条数</th>
+            </tr>
+          </thead>
+          <tbody id="summary-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-tip hidden" id="summary-empty">还没有登记任何项目</p>
+
+      <h3 class="subhead">许可写法归一</h3>
+      <p class="panel-tip">大小写、前后空格与常见别名的差异不影响判断；下面写清哪些登记按同一种许可对待</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>统一按</th>
+              <th>登记里的写法</th>
+              <th>涉及登记</th>
+              <th>处理意见</th>
+            </tr>
+          </thead>
+          <tbody id="group-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-tip hidden" id="group-empty">还没有依赖登记</p>
+
+      <h3 class="subhead">逐条结论</h3>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>依赖名称</th>
+              <th>许可（登记原文）</th>
+              <th>统一按</th>
+              <th>结论</th>
+              <th>依据</th>
+            </tr>
+          </thead>
+          <tbody id="check-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-tip hidden" id="check-empty">还没有依赖登记</p>
+    </section>
   </main>
 
   <script src="app.js"></script>

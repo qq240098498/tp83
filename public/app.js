@@ -6,6 +6,8 @@ const state = {
   licenses: [],
   statuses: [],
   editingId: '',
+  policy: { allow: [], deny: [] },
+  check: null,
 };
 
 const el = (id) => document.getElementById(id);
@@ -122,6 +124,18 @@ async function loadDeps() {
   renderDeps();
 }
 
+async function loadLicensePolicy() {
+  const payload = await request('/api/license-policy');
+  state.policy = { allow: payload.allow || [], deny: payload.deny || [] };
+  renderPolicy();
+}
+
+async function loadLicenseCheck() {
+  const payload = await request('/api/license-check');
+  state.check = payload;
+  renderCheck();
+}
+
 function renderProjects() {
   const body = el('project-body');
   body.innerHTML = state.projects.map((item) => `<tr>
@@ -202,6 +216,108 @@ function renderDeps() {
   el('dep-empty').classList.toggle('hidden', state.deps.length > 0);
 }
 
+// 两个清单的渲染：条目写法与规范名不一致时，旁边注明按什么对待
+function renderPolicy() {
+  ['allow', 'deny'].forEach((listName) => {
+    const list = state.policy[listName] || [];
+    el(`${listName}-list`).innerHTML = list.map((item) => {
+      const alias = item.display && item.display !== item.name
+        ? `<span class="policy-alias">按 ${escapeHtml(item.display)} 对待</span>`
+        : '';
+      return `<li>
+        <span class="mono">${escapeHtml(item.name)}</span>${alias}
+        <button type="button" class="link danger" data-policy-list="${listName}" data-policy-id="${escapeHtml(item.id)}" data-policy-name="${escapeHtml(item.name)}">移除</button>
+      </li>`;
+    }).join('');
+    el(`${listName}-empty`).classList.toggle('hidden', list.length > 0);
+    el(`${listName}-count`).textContent = `${list.length} 条`;
+  });
+}
+
+const VERDICT_TAGS = {
+  pass: '<span class="tag pass">通过</span>',
+  fail: '<span class="tag fail">不通过</span>',
+  pending: '<span class="tag pending">待确认</span>',
+};
+
+// 每条结论的依据写清楚：命中了哪条清单，或者是两个清单都没写到
+function verdictReason(item) {
+  if (item.verdict === 'pass') return `在允许清单里（条目：${item.matchedEntry}）`;
+  if (item.verdict === 'fail') return `在不允许清单里（条目：${item.matchedEntry}）`;
+  if (!item.license) return '许可未填，两个清单都没法对，按待确认处理';
+  return '两个清单都没写到，按待确认处理';
+}
+
+// 同一组登记的处理意见：先写清统一按什么对待，再写结论从哪来
+function groupAdvice(group) {
+  if (!group.canonical) {
+    return '这些登记没填许可，先补填许可再核；当前一律按待确认处理，不算通过';
+  }
+  const parts = [];
+  if (group.writings.length > 1) {
+    parts.push(`写法不一致：${group.writings.map(escapeHtml).join('、')}，统一按 ${escapeHtml(group.display)} 对待`);
+  } else {
+    parts.push(`统一按 ${escapeHtml(group.display)} 对待`);
+  }
+  if (group.verdict === 'pass') parts.push(`命中允许清单（条目：${escapeHtml(group.matchedEntry)}），结论通过`);
+  else if (group.verdict === 'fail') parts.push(`命中不允许清单（条目：${escapeHtml(group.matchedEntry)}），结论不通过`);
+  else parts.push('两个清单都没写到，结论待确认');
+  return parts.join('；');
+}
+
+function renderCheck() {
+  const check = state.check;
+  if (!check) return;
+
+  const summaryRows = check.summary.map((row) => `<tr>
+      <td>${escapeHtml(row.projectName)}</td>
+      <td><span class="tag pass">${row.pass}</span></td>
+      <td><span class="tag fail">${row.fail}</span></td>
+      <td><span class="tag pending">${row.pending}</span></td>
+      <td>${row.total} 条</td>
+    </tr>`);
+  summaryRows.push(`<tr class="total-row">
+      <td>全部项目合计</td>
+      <td><span class="tag pass">${check.totals.pass}</span></td>
+      <td><span class="tag fail">${check.totals.fail}</span></td>
+      <td><span class="tag pending">${check.totals.pending}</span></td>
+      <td>${check.totals.total} 条</td>
+    </tr>`);
+  el('summary-body').innerHTML = summaryRows.join('');
+  el('summary-empty').classList.toggle('hidden', check.summary.length > 0);
+
+  el('group-body').innerHTML = check.groups.map((group) => {
+    const display = group.canonical
+      ? `<span class="mono">${escapeHtml(group.display)}</span>`
+      : '<span class="missing">（未填许可）</span>';
+    const writings = group.writings.length
+      ? group.writings.map((item) => `<span class="mono">${escapeHtml(item)}</span>`).join('、')
+      : '<span class="missing">—</span>';
+    const refs = group.refs.map((ref) => `${escapeHtml(ref.projectName)} / ${escapeHtml(ref.depName)}`).join('；');
+    return `<tr>
+      <td>${display}</td>
+      <td class="wrap">${writings}</td>
+      <td class="wrap">${refs}</td>
+      <td class="wrap">${groupAdvice(group)}</td>
+    </tr>`;
+  }).join('');
+  el('group-empty').classList.toggle('hidden', check.groups.length > 0);
+
+  el('check-body').innerHTML = check.items.map((item) => {
+    const license = item.license ? escapeHtml(item.license) : '<span class="missing">未填</span>';
+    const display = item.canonical ? `<span class="mono">${escapeHtml(item.display)}</span>` : '<span class="missing">—</span>';
+    return `<tr>
+      <td>${escapeHtml(item.projectName)}</td>
+      <td class="mono">${escapeHtml(item.depName)}</td>
+      <td>${license}</td>
+      <td>${display}</td>
+      <td>${VERDICT_TAGS[item.verdict]}</td>
+      <td class="wrap">${escapeHtml(verdictReason(item))}</td>
+    </tr>`;
+  }).join('');
+  el('check-empty').classList.toggle('hidden', check.items.length > 0);
+}
+
 function openDepForm(dep) {
   state.editingId = dep ? dep.id : '';
   el('dep-form-title').textContent = dep ? `编辑登记：${dep.name}` : '新建登记';
@@ -241,6 +357,7 @@ async function submitProject(event) {
     notify('项目已新增', 'ok');
     await loadProjects();
     await loadDeps();
+    await loadLicenseCheck();
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -272,6 +389,25 @@ async function submitDep(event) {
     closeDepForm();
     await loadProjects();
     await loadDeps();
+    await loadLicenseCheck();
+  } catch (err) {
+    notify(err.message, 'error');
+    markField(err.field);
+  }
+}
+
+// 许可清单的添加：两个表单共用，清单类型决定出错位置标到哪个输入框
+async function submitPolicy(listName, event) {
+  event.preventDefault();
+  clearNotice();
+  clearFieldMarks();
+  const input = el(listName === 'allow' ? 'allow-name' : 'deny-name');
+  try {
+    await request('/api/license-policy', { method: 'POST', body: JSON.stringify({ list: listName, name: input.value }) });
+    input.value = '';
+    notify(listName === 'allow' ? '已加入允许清单' : '已加入不允许清单', 'ok');
+    await loadLicensePolicy();
+    await loadLicenseCheck();
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -306,6 +442,23 @@ document.addEventListener('click', async (event) => {
       }
       await loadProjects();
       await loadDeps();
+      await loadLicenseCheck();
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+    return;
+  }
+
+  if (node.dataset.policyId) {
+    clearNotice();
+    const listName = node.dataset.policyList;
+    const label = listName === 'allow' ? '允许清单' : '不允许清单';
+    if (!window.confirm(`确定把 ${node.dataset.policyName} 从${label}里移除吗？移除后相关登记会重新判定`)) return;
+    try {
+      await request('/api/license-policy', { method: 'DELETE', body: JSON.stringify({ list: listName, id: node.dataset.policyId }) });
+      notify('清单条目已移除', 'ok');
+      await loadLicensePolicy();
+      await loadLicenseCheck();
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -329,6 +482,7 @@ document.addEventListener('click', async (event) => {
       notify('登记已删除', 'ok');
       await loadProjects();
       await loadDeps();
+      await loadLicenseCheck();
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -361,6 +515,7 @@ el('dep-refresh').addEventListener('click', () => {
   clearNotice();
   loadProjects()
     .then(loadDeps)
+    .then(loadLicenseCheck)
     .catch((err) => notify(err.message, 'error'));
 });
 el('filter-project').addEventListener('change', () => {
@@ -375,10 +530,21 @@ el('filter-license').addEventListener('change', () => {
 el('operator').addEventListener('change', () => {
   window.localStorage.setItem(OPERATOR_KEY, currentOperator());
 });
+el('allow-form').addEventListener('submit', (event) => submitPolicy('allow', event));
+el('deny-form').addEventListener('submit', (event) => submitPolicy('deny', event));
+el('license-refresh').addEventListener('click', () => {
+  clearNotice();
+  loadLicensePolicy()
+    .then(loadLicenseCheck)
+    .catch((err) => notify(err.message, 'error'));
+});
 
-// 页面打开时先把项目与依赖登记拉一遍，项目决定登记表单里能选哪些归属
+// 页面打开时先把项目与依赖登记拉一遍，项目决定登记表单里能选哪些归属；许可清单与核查结果一并拉取
 restoreOperator();
 loadHealth();
 loadProjects()
   .then(loadDeps)
+  .catch((err) => notify(err.message, 'error'));
+loadLicensePolicy()
+  .then(loadLicenseCheck)
   .catch((err) => notify(err.message, 'error'));

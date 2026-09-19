@@ -270,6 +270,21 @@ td.actions {
   color: var(--ink-soft);
 }
 
+.tag.pass {
+  background: #eefaf3;
+  color: var(--ok);
+}
+
+.tag.fail {
+  background: #fdeeee;
+  color: var(--danger);
+}
+
+.tag.pending {
+  background: var(--warn-bg);
+  color: #8a5a00;
+}
+
 .empty-tip {
   margin: 12px 0 0;
   color: var(--ink-soft);
@@ -340,4 +355,87 @@ label.full input {
 .form-actions {
   display: flex;
   gap: 10px;
+}
+
+/* 许可清单：两个清单并排，条目写法与规范名不一致时旁边注明 */
+.policy-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.policy-box {
+  flex: 1;
+  min-width: 300px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.policy-box h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.policy-count {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.policy-list {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.policy-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #f9fafc;
+}
+
+.policy-list li .link {
+  margin-left: auto;
+}
+
+.policy-alias {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.policy-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.policy-field {
+  flex: 1;
+}
+
+.subhead {
+  margin: 20px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.subhead + .panel-tip {
+  margin-bottom: 8px;
+}
+
+td.wrap {
+  white-space: normal;
+  max-width: 320px;
+}
+
+tr.total-row td {
+  background: #f9fafc;
+  font-weight: 600;
 }
